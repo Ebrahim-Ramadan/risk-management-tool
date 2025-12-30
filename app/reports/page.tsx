@@ -8,8 +8,8 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Shield, Download } from "lucide-react"
 import { mockAssets, mockAssessments, mockThreats } from "@/lib/mock-data"
-import jsPDF from "jspdf"
-import "jspdf-autotable"
+// Load jspdf and its autotable plugin dynamically inside generatePDF to
+// avoid module-initialization/runtime issues in the Next.js environment.
 
 export default function ReportsPage() {
   const reportData = useMemo(() => {
@@ -43,118 +43,129 @@ export default function ReportsPage() {
     }
   }, [])
 
-  const generatePDF = () => {
-    const doc = new jsPDF()
-    const pageWidth = doc.internal.pageSize.getWidth()
-    const pageHeight = doc.internal.pageSize.getHeight()
-    const margin = 15
-    let yPosition = margin
+const generatePDF = async () => {
+  // Dynamically import both libraries
+  const { jsPDF } = await import("jspdf");
+  const { applyPlugin } = await import("jspdf-autotable");
 
-    // Title
-    doc.setFontSize(20)
-    doc.setTextColor(40, 40, 40)
-    doc.text("Risk Management Report", margin, yPosition)
-    yPosition += 10
+  // Explicitly apply the plugin to the jsPDF constructor
+  applyPlugin(jsPDF);
 
-    // Date
-    doc.setFontSize(10)
-    doc.setTextColor(100, 100, 100)
-    doc.text(`Generated: ${new Date().toLocaleDateString()}`, margin, yPosition)
-    yPosition += 8
+  const doc = new jsPDF();
 
-    // Executive Summary
-    doc.setFontSize(14)
-    doc.setTextColor(40, 40, 40)
-    doc.text("Executive Summary", margin, yPosition)
-    yPosition += 7
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 15;
+  let yPosition = margin;
 
-    doc.setFontSize(11)
-    doc.setTextColor(60, 60, 60)
-    const summaryText = doc.splitTextToSize(
-      `This report provides a comprehensive overview of the organization's current risk posture. It details all identified assets, associated threats, calculated risk scores, and the treatment actions being taken to mitigate identified risks. The assessment methodology uses a 5x5 likelihood and impact matrix resulting in risk scores from 1-25.`,
-      pageWidth - 2 * margin,
-    )
-    doc.text(summaryText, margin, yPosition)
-    yPosition += summaryText.length * 5 + 5
+  // Title
+  doc.setFontSize(20);
+  doc.setTextColor(40, 40, 40);
+  doc.text("Risk Management Report", margin, yPosition);
+  yPosition += 10;
 
-    // Risk Statistics
-    doc.setFontSize(12)
-    doc.setTextColor(40, 40, 40)
-    doc.text("Risk Overview", margin, yPosition)
-    yPosition += 7
+  // Date (fixed template literal syntax)
+  doc.setFontSize(10);
+  doc.setTextColor(100, 100, 100);
+  doc.text(`Generated: ${new Date().toLocaleDateString()}`, margin, yPosition);
+  yPosition += 8;
 
-    const statsData = [
-      ["Total Assets", reportData.totalAssets.toString()],
-      ["Total Risk Assessments", reportData.totalAssessments.toString()],
-      ["Critical Risks", reportData.criticalRisks.toString()],
-      ["High Risks", reportData.highRisks.toString()],
-      ["Medium Risks", reportData.mediumRisks.toString()],
-      ["Low Risks", reportData.lowRisks.toString()],
-    ]
+  // Executive Summary
+  doc.setFontSize(14);
+  doc.setTextColor(40, 40, 40);
+  doc.text("Executive Summary", margin, yPosition);
+  yPosition += 7;
 
-    doc.autoTable({
-      startY: yPosition,
-      head: [["Metric", "Count"]],
-      body: statsData,
-      margin: { left: margin, right: margin },
-      theme: "grid",
-      headStyles: { fillColor: [41, 128, 185], textColor: [255, 255, 255], fontStyle: "bold" },
-      bodyStyles: { textColor: [60, 60, 60] },
-      alternateRowStyles: { fillColor: [245, 245, 245] },
-    })
+  doc.setFontSize(11);
+  doc.setTextColor(60, 60, 60);
+  const summaryText = doc.splitTextToSize(
+    "This report provides a comprehensive overview of the organization's current risk posture. It details all identified assets, associated threats, calculated risk scores, and the treatment actions being taken to mitigate identified risks. The assessment methodology uses a 5x5 likelihood and impact matrix resulting in risk scores from 1-25.",
+    pageWidth - 2 * margin
+  );
+  doc.text(summaryText, margin, yPosition);
+  yPosition += (summaryText as string[]).length * 5 + 5; // Cast to avoid TS warning
 
-    yPosition = (doc as any).lastAutoTable.finalY + 10
+  // Risk Statistics
+  doc.setFontSize(12);
+  doc.setTextColor(40, 40, 40);
+  doc.text("Risk Overview", margin, yPosition);
+  yPosition += 7;
 
-    // Risk Treatment Actions Table
-    if (yPosition > pageHeight - 50) {
-      doc.addPage()
-      yPosition = margin
-    }
+  const statsData = [
+    ["Total Assets", reportData.totalAssets.toString()],
+    ["Total Risk Assessments", reportData.totalAssessments.toString()],
+    ["Critical Risks", reportData.criticalRisks.toString()],
+    ["High Risks", reportData.highRisks.toString()],
+    ["Medium Risks", reportData.mediumRisks.toString()],
+    ["Low Risks", reportData.lowRisks.toString()],
+  ];
 
-    doc.setFontSize(12)
-    doc.setTextColor(40, 40, 40)
-    doc.text("Risk Treatment Actions", margin, yPosition)
-    yPosition += 7
+  // Now autoTable should be available
+  doc.autoTable({
+    startY: yPosition,
+    head: [["Metric", "Count"]],
+    body: statsData,
+    margin: { left: margin, right: margin },
+    theme: "grid",
+    headStyles: { fillColor: [41, 128, 185], textColor: [255, 255, 255], fontStyle: "bold" },
+    bodyStyles: { textColor: [60, 60, 60] },
+    alternateRowStyles: { fillColor: [245, 245, 245] },
+  });
 
-    const treatmentData = reportData.riskTreatmentActions.map((action) => [
-      action.asset,
-      action.threat,
-      action.risk_score.toString(),
-      action.risk_level,
-      action.treatment,
-      action.responsible_party,
-    ])
+  // @ts-expect-error - lastAutoTable is added by the plugin
+  yPosition = doc.lastAutoTable.finalY + 10;
 
-    doc.autoTable({
-      startY: yPosition,
-      head: [["Asset", "Threat", "Score", "Level", "Treatment", "Owner"]],
-      body: treatmentData,
-      margin: { left: margin, right: margin },
-      theme: "grid",
-      headStyles: { fillColor: [41, 128, 185], textColor: [255, 255, 255], fontStyle: "bold" },
-      bodyStyles: { textColor: [60, 60, 60] },
-      alternateRowStyles: { fillColor: [245, 245, 245] },
-      columnStyles: {
-        2: { halign: "center" },
-        3: { halign: "center" },
-      },
-    })
-
-    yPosition = (doc as any).lastAutoTable.finalY + 10
-
-    // Footer
-    if (yPosition > pageHeight - 30) {
-      doc.addPage()
-      yPosition = pageHeight - 20
-    }
-
-    doc.setFontSize(9)
-    doc.setTextColor(150, 150, 150)
-    doc.text("This report is confidential and for internal use only.", margin, yPosition)
-
-    // Save PDF
-    doc.save("Risk_Management_Report.pdf")
+  // Risk Treatment Actions Table
+  if (yPosition > pageHeight - 50) {
+    doc.addPage();
+    yPosition = margin;
   }
+
+  doc.setFontSize(12);
+  doc.setTextColor(40, 40, 40);
+  doc.text("Risk Treatment Actions", margin, yPosition);
+  yPosition += 7;
+
+  const treatmentData = reportData.riskTreatmentActions.map((action) => [
+    action.asset,
+    action.threat,
+    action.risk_score.toString(),
+    action.risk_level,
+    action.treatment,
+    action.responsible_party,
+  ]);
+
+  doc.autoTable({
+    startY: yPosition,
+    head: [["Asset", "Threat", "Score", "Level", "Treatment", "Owner"]],
+    body: treatmentData,
+    margin: { left: margin, right: margin },
+    theme: "grid",
+    headStyles: { fillColor: [41, 128, 185], textColor: [255, 255, 255], fontStyle: "bold" },
+    bodyStyles: { textColor: [60, 60, 60] },
+    alternateRowStyles: { fillColor: [245, 245, 245] },
+    columnStyles: {
+      2: { halign: "center" },
+      3: { halign: "center" },
+    },
+  });
+
+  // @ts-expect-error - lastAutoTable is added by the plugin
+  yPosition = doc.lastAutoTable.finalY + 10;
+
+  // Footer
+  if (yPosition > pageHeight - 30) {
+    doc.addPage();
+    yPosition = pageHeight - 20;
+  }
+
+  doc.setFontSize(9);
+  doc.setTextColor(150, 150, 150);
+  doc.text("This report is confidential and for internal use only.", margin, yPosition);
+
+  // Save PDF
+  doc.save("Risk_Management_Report.pdf");
+};
 
   return (
     <div className="min-h-screen bg-background">
